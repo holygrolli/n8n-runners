@@ -65,7 +65,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             N8N_VERSION=${{ env.N8N_VERSION }}
-          tags: ghcr.io/${{ github.repository_owner }}/n8n-runner:${{ env.N8N_VERSION }}
+          tags: ghcr.io/${{ github.repository_owner }}/n8n-runners:${{ env.N8N_VERSION }}
 
       - name: Create and push git tag
         run: |
