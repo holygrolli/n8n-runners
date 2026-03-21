@@ -1,0 +1,80 @@
+name: Build and Push Custom n8n-runner Image
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Run daily at 2:00 AM
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version of n8n to build (e.g. 2.7.5). If left empty, the latest stable release will be used.'
+        required: false
+        type: string
+
+jobs:
+  build:
+    name: Build Multi-arch Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get n8n stable version
+        id: get_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using provided manual version: $VERSION"
+          else
+            # Fetch the release payload from the 'stable' tag
+            # We extract "n8n@2.x.x" from the release body
+            RELEASE_BODY=$(curl -sL https://api.github.com/repos/n8n-io/n8n/releases/tags/stable | jq -r '.body')
+            # Extract the 2.x.x version using grep
+            VERSION=$(echo "$RELEASE_BODY" | grep -oE 'n8n@2\.[0-9]+\.[0-9]+' | head -n1 | sed 's/n8n@//')
+            
+            if [ -z "$VERSION" ]; then
+              echo "Error: Could not determine stable version 2.x from release body"
+              exit 1
+            fi
+            echo "Found stable version: $VERSION"
+          fi
+          echo "N8N_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            N8N_VERSION=${{ env.N8N_VERSION }}
+          tags: ghcr.io/${{ github.repository_owner }}/n8n-runner:${{ env.N8N_VERSION }}
+
+      - name: Create and push git tag
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          TAG_NAME="${{ env.N8N_VERSION }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
+            echo "Tag ${TAG_NAME} already exists. Skipping."
+          else
+            git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+            git push origin "${TAG_NAME}"
+          fi
