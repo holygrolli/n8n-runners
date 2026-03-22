@@ -5,5 +5,5 @@ LABEL org.opencontainers.image.source="https://github.com/holygrolli/n8n-runners
       org.opencontainers.image.version="${N8N_VERSION}"
 USER root
 #RUN cd /opt/runners/task-runner-javascript && pnpm add moment uuid
-RUN cd /opt/runners/task-runner-python && uv pip install boto3 requests
+RUN cd /opt/runners/task-runner-python && uv pip install boto3 requests valkey
 USER runner
