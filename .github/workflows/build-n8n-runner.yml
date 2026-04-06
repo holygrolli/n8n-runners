@@ -29,14 +29,20 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
             echo "Using provided manual version: $VERSION"
           else
-            # Fetch the release payload from the 'stable' tag
-            # We extract "n8n@2.x.x" from the release body
-            RELEASE_BODY=$(curl -sL https://api.github.com/repos/n8n-io/n8n/releases/tags/stable | jq -r '.body')
-            # Extract the 2.x.x version using grep
-            VERSION=$(echo "$RELEASE_BODY" | grep -oE 'n8n@2\.[0-9]+\.[0-9]+' | head -n1 | sed 's/n8n@//')
-            
+            # Fetch the release JSON from the 'stable' tag
+            RELEASE_JSON=$(curl -sL -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/n8n-io/n8n/releases/tags/stable | tr -d '\000-\037')
+            # Use only 'target_commitish' to determine the version
+            TARGET_COMMITISH=$(echo "$RELEASE_JSON" | jq -r '.target_commitish // empty')
+            if [ -z "$TARGET_COMMITISH" ]; then
+              echo "Error: target_commitish not present in release JSON"
+              exit 1
+            fi
+            # Normalize and extract the 2.x.y version from target_commitish
+            VERSION=$(echo "$TARGET_COMMITISH" | sed -E 's/^n8n@?//;s/^v//;s#^refs/heads/##')
+            VERSION=$(echo "$VERSION" | grep -oE '2\.[0-9]+\.[0-9]+' | head -n1)
+
             if [ -z "$VERSION" ]; then
-              echo "Error: Could not determine stable version 2.x from release body"
+              echo "Error: Could not extract 2.x.y version from target_commitish: $TARGET_COMMITISH"
               exit 1
             fi
             echo "Found stable version: $VERSION"
